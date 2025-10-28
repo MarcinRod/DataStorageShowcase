@@ -237,7 +237,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
     suspend fun restoreDeletedColors(): List<ColorEntity> {
         val list = getDeletedOnce()
-        restoreDeletedColors()
+        removeDeletedColors()
         return list
     }
 
