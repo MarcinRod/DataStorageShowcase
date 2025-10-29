@@ -72,10 +72,14 @@ class MainActivity : ComponentActivity() {
             // available as `ColorsScreenSimple` if you want to show the UI
             // without DataStore integration.
             val app = application as App
-            ColorsScreenWithDataStore(
-                repository = app.colorRepository,
-                settings = app.settingsRepository
-            )
+            val useDataStore = true
+            if (useDataStore)
+                ColorsScreenWithDataStore(
+                    repository = app.colorRepository,
+                    settings = app.settingsRepository
+                )
+            else
+                ColorsScreenSimple(repository = app.colorRepository)
         }
     }
 }
@@ -224,6 +228,9 @@ fun FilterBar(
     showOnlyFavorites: Boolean,
     onToggleFavorites: () -> Unit
 ) {
+    var range by remember(minHue, maxHue) {
+        mutableStateOf(minHue..maxHue)
+    }
     Surface(
         tonalElevation = 2.dp,
         modifier = Modifier.fillMaxWidth()
@@ -274,9 +281,7 @@ fun FilterBar(
                     .background(brush = Brush.horizontalGradient(hueStops))
             ) {
 
-                var range by remember {
-                    mutableStateOf(0f..360f)
-                }
+
 
                 // RangeSlider: hue interval selector
                 // - `value` is a ClosedFloatingPointRange<Float> (start = lower hue, endInclusive = upper hue).
@@ -538,13 +543,13 @@ fun ColorsScreenSimple(repository: pl.marrod.datastorageshowcase.data.ColorRepos
 
                     val filteredColors =
                         remember(allColors, nameQuery, minHue, maxHue, showOnlyFavorites) {
-                            allColors.filter { c ->
-                                val matchesName = nameQuery.isBlank() || c.name.contains(
+                            allColors.filter { color ->
+                                val matchesName = nameQuery.isBlank() || color.name.contains(
                                     nameQuery,
                                     ignoreCase = true
                                 )
-                                val matchesHue = c.hue >= minHue && c.hue <= maxHue
-                                val matchesFav = !showOnlyFavorites || c.isFavorite
+                                val matchesHue = color.hue >= minHue && color.hue <= maxHue
+                                val matchesFav = !showOnlyFavorites || color.isFavorite
                                 matchesName && matchesHue && matchesFav
                             }
                         }
@@ -561,7 +566,7 @@ fun ColorsScreenSimple(repository: pl.marrod.datastorageshowcase.data.ColorRepos
                         ColorGrid(
                             colors = filteredColors,
                             onToggleFavorite = { id -> uiScope.launch { repository.toggleFavorite(id) } },
-                            onLongClick = { c -> uiScope.launch { repository.delete(c) } })
+                            onLongClick = { color -> uiScope.launch { repository.delete(color) } })
                     }
                 }
 
@@ -598,7 +603,10 @@ fun ColorsScreenSimple(repository: pl.marrod.datastorageshowcase.data.ColorRepos
                     onNameChange = { nameQuery = it },
                     minHue = minHue,
                     maxHue = maxHue,
-                    onHueChange = { a, b -> minHue = a; maxHue = b },
+                    onHueChange = { start, end ->
+                        minHue = start
+                        maxHue = end
+                    },
                     showOnlyFavorites = showOnlyFavorites,
                     onToggleFavorites = { showOnlyFavorites = !showOnlyFavorites })
             }
@@ -714,13 +722,13 @@ fun ColorsScreenWithDataStore(
                     // it recomputes only when inputs change.
                     val filteredColors =
                         remember(allColors, nameQuery, minHue, maxHue, showOnlyFavorites) {
-                            allColors.filter { c ->
-                                val matchesName = nameQuery.isBlank() || c.name.contains(
+                            allColors.filter { color ->
+                                val matchesName = nameQuery.isBlank() || color.name.contains(
                                     nameQuery,
                                     ignoreCase = true
                                 )
-                                val matchesHue = c.hue >= minHue && c.hue <= maxHue
-                                val matchesFav = !showOnlyFavorites || c.isFavorite
+                                val matchesHue = color.hue >= minHue && color.hue <= maxHue
+                                val matchesFav = !showOnlyFavorites || color.isFavorite
                                 matchesName && matchesHue && matchesFav
                             }
                         }
@@ -737,11 +745,11 @@ fun ColorsScreenWithDataStore(
                         ColorGrid(
                             colors = filteredColors,
                             onToggleFavorite = { id -> uiScope.launch { repository.toggleFavorite(id) } },
-                            onLongClick = { c ->
+                            onLongClick = { color ->
                                 uiScope.launch {
                                     // save deleted color to DataStore so it can be restored later
-                                    settings.addDeletedColor(c)
-                                    repository.delete(c)
+                                    settings.addDeletedColor(color)
+                                    repository.delete(color)
                                 }
                             })
                     }
@@ -758,7 +766,8 @@ fun ColorsScreenWithDataStore(
                     AddColorDialog(onDismiss = { showAddDialog = false }, onAdd = { name, hex ->
                         uiScope.launch {
                             try {
-                                var h = hex.trim(); if (!h.startsWith("#")) h = "#$h"
+                                var h = hex.trim()
+                                if (!h.startsWith("#")) h = "#$h"
                                 val colorInt = h.toColorInt(); repository.insert(
                                     ColorEntity(
                                         name = name.ifBlank { "Unnamed" },
@@ -779,11 +788,15 @@ fun ColorsScreenWithDataStore(
                     },
                     minHue = minHue,
                     maxHue = maxHue,
-                    onHueChange = { a, b ->
-                        minHue = a.coerceAtLeast(0f); maxHue =
-                        b.coerceAtMost(360f); if (minHue > maxHue) {
-                        val tmp = minHue; minHue = maxHue; maxHue = tmp
-                    }; uiScope.launch { settings.setHueRange(minHue, maxHue) }
+                    onHueChange = { start, end ->
+                        minHue = start
+                        maxHue = end
+                        if (minHue > maxHue) {
+                            val tmp = minHue
+                            minHue = maxHue
+                            maxHue = tmp
+                        }
+                        uiScope.launch { settings.setHueRange(minHue, maxHue) }
                     },
                     showOnlyFavorites = showOnlyFavorites,
                     onToggleFavorites = {

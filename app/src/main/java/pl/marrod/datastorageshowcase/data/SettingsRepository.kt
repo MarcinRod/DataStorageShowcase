@@ -11,7 +11,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey as stringPrefKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
 import java.net.URLDecoder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -47,6 +46,7 @@ val Context.dataStore by preferencesDataStore(name = "settings")
  * - [MAX_HUE]       : Float   — maximum hue bound (degrees 0..360).
  * - [SHOW_FAV]      : Boolean — whether the "only favorites" filter is enabled.
  * - [THEME]         : String  — theme preference: "system", "light" or "dark".
+ * - [DELETED_COLORS_JSON] : String — JSON array string storing deleted colors.
  *
  * This wrapper keeps all DataStore access in one place and returns Flows so
  * callers (ViewModels, Composables) can collect settings reactively.
@@ -70,7 +70,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         // JSON key that stores the entire deleted-colors list as a JSON array string.
         private val DELETED_COLORS_JSON = stringPrefKey("deleted_colors_json")
 
+        // JSON serializer instance for encoding/decoding deleted colors list.
         private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
+        // Serializer for List<ColorEntity>
         private val deletedListSerializer = ListSerializer(ColorEntity.serializer())
     }
 
@@ -111,19 +114,6 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     val deletedColorsFlow: Flow<List<ColorEntity>> = dataStore.data.map { prefs ->
         val raw = prefs[DELETED_COLORS_JSON] ?: "[]"
         try {
-            json.decodeFromString(deletedListSerializer, raw)
-        } catch (_: SerializationException) {
-            emptyList()
-        }
-    }
-
-    /**
-     * One-shot read of the deleted colors list.
-     */
-    suspend fun getDeletedOnce(): List<ColorEntity> {
-        val prefs = dataStore.data.first()
-        val raw = prefs[DELETED_COLORS_JSON] ?: "[]"
-        return try {
             json.decodeFromString(deletedListSerializer, raw)
         } catch (_: SerializationException) {
             emptyList()
@@ -212,6 +202,19 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     suspend fun getThemeOnce(): String {
         val prefs = dataStore.data.first()
         return prefs[THEME] ?: "system"
+    }
+
+    /**
+     * One-shot read of the deleted colors list.
+     */
+    suspend fun getDeletedOnce(): List<ColorEntity> {
+        val prefs = dataStore.data.first()
+        val raw = prefs[DELETED_COLORS_JSON] ?: "[]"
+        return try {
+            json.decodeFromString(deletedListSerializer, raw)
+        } catch (_: SerializationException) {
+            emptyList()
+        }
     }
 
     /**
